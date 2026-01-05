@@ -222,19 +222,44 @@ router.get('/status/:checkoutRequestId', async (req, res) => {
       });
     }
 
-    if (statusResult.resultCode === 'PENDING' || statusResult.resultCode === 1) {
+    // Check if still processing - Daraja returns specific messages for pending transactions
+    const pendingMessages = [
+      'still under processing',
+      'still processing',
+      'pending',
+      'in progress',
+    ];
+
+    const isPending =
+      statusResult.resultCode === 'PENDING' ||
+      statusResult.resultCode === 1 ||
+      (statusResult.resultDesc && pendingMessages.some(msg =>
+        statusResult.resultDesc.toLowerCase().includes(msg)
+      ));
+
+    if (isPending) {
       return res.json({
-        success: false,
+        success: true,
         status: 'pending',
         message: 'Waiting for payment confirmation...',
       });
     }
 
-    // Payment failed
+    // Known failure codes
+    const failureCodes = [1032, 1037, 1, 2001, '1032', '1037', '2001'];
+    if (failureCodes.includes(statusResult.resultCode)) {
+      return res.json({
+        success: false,
+        status: 'failed',
+        message: statusResult.resultDesc || 'Payment failed or was cancelled',
+      });
+    }
+
+    // Unknown status - treat as pending to avoid false failures
     return res.json({
-      success: false,
-      status: 'failed',
-      message: statusResult.resultDesc || 'Payment failed or was cancelled',
+      success: true,
+      status: 'pending',
+      message: 'Waiting for payment confirmation...',
     });
   } catch (error) {
     console.error('Status Check Error:', error);
