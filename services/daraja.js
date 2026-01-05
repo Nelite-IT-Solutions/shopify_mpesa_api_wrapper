@@ -11,6 +11,7 @@ class DarajaService {
     this.consumerKey = process.env.DARAJA_CONSUMER_KEY;
     this.consumerSecret = process.env.DARAJA_CONSUMER_SECRET;
     this.shortcode = process.env.DARAJA_SHORTCODE;
+    this.tillNumber = process.env.DARAJA_TILL_NO;
     this.passkey = process.env.DARAJA_PASSKEY;
     this.callbackUrl = process.env.DARAJA_CALLBACK_URL;
     this.environment = process.env.DARAJA_ENV || 'sandbox';
@@ -133,7 +134,7 @@ class DarajaService {
         TransactionType: 'CustomerBuyGoodsOnline', // For Till Number
         Amount: roundedAmount,
         PartyA: formattedPhone,      // Customer phone
-        PartyB: this.shortcode,       // Till number
+        PartyB: this.tillNumber,       // Till number
         PhoneNumber: formattedPhone,
         CallBackURL: this.callbackUrl,
         AccountReference: reference,
