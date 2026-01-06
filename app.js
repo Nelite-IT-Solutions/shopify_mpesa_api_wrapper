@@ -103,7 +103,8 @@ const requiredEnvVars = [
   'DARAJA_PASSKEY',
   'DARAJA_CALLBACK_URL',
   'SHOPIFY_STORE_DOMAIN',
-  'SHOPIFY_ACCESS_TOKEN',
+  'SHOPIFY_CLIENT_ID',
+  'SHOPIFY_CLIENT_SECRET',
 ];
 
 const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
