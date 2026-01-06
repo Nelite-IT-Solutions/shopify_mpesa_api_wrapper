@@ -158,15 +158,34 @@ class ShopifyService {
       phone: phone || shippingAddress.phone,
     };
 
-    const orderPayload = {
-      order: {
-        line_items: shopifyLineItems,
-        customer: {
+    // Check if customer already exists by phone number
+    let customerData;
+    if (phone) {
+      const existingCustomer = await this.findCustomerByPhone(phone);
+      if (existingCustomer) {
+        // Use existing customer ID
+        customerData = { id: existingCustomer.id };
+      } else {
+        // Create new customer
+        customerData = {
           first_name: shopifyShippingAddress.first_name,
           last_name: shopifyShippingAddress.last_name,
           email: email || null,
           phone: phone,
-        },
+        };
+      }
+    } else {
+      customerData = {
+        first_name: shopifyShippingAddress.first_name,
+        last_name: shopifyShippingAddress.last_name,
+        email: email || null,
+      };
+    }
+
+    const orderPayload = {
+      order: {
+        line_items: shopifyLineItems,
+        customer: customerData,
         shipping_address: shopifyShippingAddress,
         billing_address: shopifyShippingAddress,
         financial_status: 'paid', // Mark as paid
@@ -272,6 +291,28 @@ class ShopifyService {
     } catch (error) {
       console.error('Inventory check failed:', error.message);
       return { available: true, quantity: 0 }; // Default to available if check fails
+    }
+  }
+
+  /**
+   * Find existing customer by phone number
+   * @param {string} phone - Phone number to search for
+   * @returns {Object|null} Customer object or null if not found
+   */
+  async findCustomerByPhone(phone) {
+    try {
+      // Normalize phone number for search
+      const normalizedPhone = phone.replace(/\s+/g, '');
+      const response = await this.request('GET', `/customers/search.json?query=phone:${encodeURIComponent(normalizedPhone)}`);
+
+      if (response.customers && response.customers.length > 0) {
+        console.log('Found existing customer:', response.customers[0].id);
+        return response.customers[0];
+      }
+      return null;
+    } catch (error) {
+      console.error('Customer search failed:', error.message);
+      return null;
     }
   }
 }
