@@ -1,6 +1,7 @@
 /**
  * Shopify Admin API Service
  * Handles order creation and management
+ * Uses OAuth Client Credentials flow for token management (Shopify 2026+)
  */
 
 const axios = require('axios');
@@ -8,10 +9,58 @@ const axios = require('axios');
 class ShopifyService {
   constructor() {
     this.storeDomain = process.env.SHOPIFY_STORE_DOMAIN;
-    this.accessToken = process.env.SHOPIFY_ACCESS_TOKEN;
-    this.apiVersion = '2024-01'; // Use latest stable version
+    this.clientId = process.env.SHOPIFY_CLIENT_ID;
+    this.clientSecret = process.env.SHOPIFY_CLIENT_SECRET;
+    this.apiVersion = '2024-10'; // Use latest stable version
 
-    this.baseUrl = `https://${this.storeDomain}/admin/api/${this.apiVersion}`;
+    // Token management
+    this.accessToken = null;
+    this.tokenExpiry = null;
+
+    // Build base URLs
+    this.storeUrl = `https://${this.storeDomain}`;
+    this.baseUrl = `${this.storeUrl}/admin/api/${this.apiVersion}`;
+  }
+
+  /**
+   * Get OAuth access token using client credentials grant
+   * Token is valid for 24 hours (86399 seconds)
+   */
+  async getAccessToken() {
+    // Return cached token if still valid (with 5 minute buffer)
+    if (this.accessToken && this.tokenExpiry && Date.now() < this.tokenExpiry - 300000) {
+      return this.accessToken;
+    }
+
+    try {
+      console.log('Fetching new Shopify access token...');
+
+      const response = await axios.post(
+        `${this.storeUrl}/admin/oauth/access_token`,
+        new URLSearchParams({
+          grant_type: 'client_credentials',
+          client_id: this.clientId,
+          client_secret: this.clientSecret,
+        }).toString(),
+        {
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+        }
+      );
+
+      this.accessToken = response.data.access_token;
+      // Token expires in 24 hours (86399 seconds)
+      this.tokenExpiry = Date.now() + (response.data.expires_in * 1000);
+
+      console.log('Shopify access token obtained, expires in:', response.data.expires_in, 'seconds');
+      console.log('Granted scopes:', response.data.scope);
+
+      return this.accessToken;
+    } catch (error) {
+      console.error('Shopify OAuth Error:', error.response?.data || error.message);
+      throw new Error('Failed to get Shopify access token: ' + (error.response?.data?.error_description || error.message));
+    }
   }
 
   /**
@@ -19,11 +68,14 @@ class ShopifyService {
    */
   async request(method, endpoint, data = null) {
     try {
+      // Get fresh token if needed
+      const token = await this.getAccessToken();
+
       const config = {
         method,
         url: `${this.baseUrl}${endpoint}`,
         headers: {
-          'X-Shopify-Access-Token': this.accessToken,
+          'X-Shopify-Access-Token': token,
           'Content-Type': 'application/json',
         },
       };
@@ -35,6 +87,30 @@ class ShopifyService {
       const response = await axios(config);
       return response.data;
     } catch (error) {
+      // If token expired, clear cache and retry once
+      if (error.response?.status === 401) {
+        console.log('Token expired, refreshing...');
+        this.accessToken = null;
+        this.tokenExpiry = null;
+
+        const token = await this.getAccessToken();
+        const config = {
+          method,
+          url: `${this.baseUrl}${endpoint}`,
+          headers: {
+            'X-Shopify-Access-Token': token,
+            'Content-Type': 'application/json',
+          },
+        };
+
+        if (data) {
+          config.data = data;
+        }
+
+        const response = await axios(config);
+        return response.data;
+      }
+
       console.error('Shopify API Error:', error.response?.data || error.message);
       throw new Error(error.response?.data?.errors || error.message);
     }
